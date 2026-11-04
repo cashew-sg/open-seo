@@ -1,0 +1,119 @@
+name: Build
+
+# Applies patches/ to the newest upstream release and publishes the image, once per
+# release and patch. CI pushes no git ref, so upstream's history never enters this repo.
+on:
+  schedule:
+    - cron: "17 22 * * *"
+  push:
+    branches: [cashew]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  packages: write
+
+concurrency:
+  group: build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.repository == 'cashew-sg/open-seo'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the patches
+        uses: actions/checkout@v4
+
+      - name: Find the newest upstream release
+        id: version
+        run: |
+          release=$(git ls-remote --tags --refs https://github.com/every-app/open-seo.git 'v*' \
+            | sed 's|.*refs/tags/||' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+          patch=$(cat patches/*.patch | sha256sum | cut -c1-7)
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/cashew-sg/open-seo:${release#v}-sg.$patch" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Skip an image already built
+        id: built
+        env:
+          IMAGE: ${{ steps.version.outputs.image }}
+        run: |
+          if docker manifest inspect "$IMAGE" > /dev/null 2>&1; then
+            echo "$IMAGE exists."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout the upstream release
+        if: steps.built.outputs.skip != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: every-app/open-seo
+          ref: ${{ steps.version.outputs.release }}
+          path: upstream
+
+      - name: Apply the patches
+        if: steps.built.outputs.skip != 'true'
+        working-directory: upstream
+        run: git apply --3way ../patches/*.patch && git status --short
+
+      - name: Setup pnpm
+        if: steps.built.outputs.skip != 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: upstream/package.json
+
+      - name: Setup Node.js
+        if: steps.built.outputs.skip != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: upstream/pnpm-lock.yaml
+
+      # Upstream's own CI, on the patched tree.
+      - name: Check
+        if: steps.built.outputs.skip != 'true'
+        working-directory: upstream
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run ci:check
+          pnpm run test:ci
+
+      - name: Set up Buildx
+        if: steps.built.outputs.skip != 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push the image
+        if: steps.built.outputs.skip != 'true'
+        uses: docker/build-push-action@v6
+        with:
+          context: upstream
+          file: upstream/deploy/docker/Dockerfile
+          push: true
+          # The deployment host is amd64; arm64 under QEMU would triple the build.
+          platforms: linux/amd64
+          tags: ${{ steps.version.outputs.image }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/cashew-sg/open-seo
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.version.outputs.release }}
+
+      - name: Open an issue
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE: ${{ steps.version.outputs.release }}
+        run: |
+          title="Build fails on $RELEASE"
+          if [ -z "$(gh issue list --state open --search "$title in:title" --json number --jq '.[].number')" ]; then
+            gh issue create --title "$title" --body "Nothing was published. $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          fi
