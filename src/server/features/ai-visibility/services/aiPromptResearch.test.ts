@@ -125,7 +125,7 @@ describe("researchAiPrompts", () => {
   it("reads US English ChatGPT prompts, keeps the ones the model finds on topic, merges near-duplicates, and flags the project", async () => {
     const result = await researchAiPrompts(input, customer);
 
-    // ChatGPT data exists only in US English, whatever the tracker market.
+    // No tracker or project market falls back to US English ChatGPT data.
     expect(mentionsSearch).toHaveBeenCalledWith(
       expect.objectContaining({
         platform: "chat_gpt",
@@ -147,6 +147,69 @@ describe("researchAiPrompts", () => {
       expect.objectContaining({ projectId: "project" }),
       [expect.objectContaining({ provider: "openrouter", costUsd: 0.003 })],
     );
+  });
+
+  it("researches Google AI Overview searches in a non-US market and rewrites them as questions", async () => {
+    getTracker.mockResolvedValue({
+      tracker: { locationCode: 2702, languageCode: "en" },
+      brands: [],
+      prompts: [],
+    });
+    mentionsSearch.mockResolvedValue([
+      { question: "sg mortgage rates", ai_search_volume: 2900 },
+      { question: "dbs", ai_search_volume: 165000 },
+    ]);
+    generateText.mockImplementation(
+      async ({ onStepFinish }: { onStepFinish: (step: object) => unknown }) => {
+        await onStepFinish({});
+        return {
+          output: {
+            relevant: [
+              { id: 0, question: "What are mortgage rates in Singapore?" },
+            ],
+          },
+        };
+      },
+    );
+
+    const result = await researchAiPrompts(input, customer);
+
+    // Google answers mention the keyword under unrelated head terms.
+    expect(mentionsSearch.mock.lastCall?.[0]).toMatchObject({
+      platform: "google",
+      locationCode: 2702,
+      languageCode: "en",
+      target: { search_scope: ["question"] },
+    });
+    expect(result.source).toEqual({
+      platform: "google",
+      locationCode: 2702,
+      languageCode: "en",
+    });
+    expect(result.prompts).toMatchObject([
+      { text: "What are mortgage rates in Singapore?", variants: [] },
+    ]);
+  });
+
+  it("falls back to US English ChatGPT data when the provider rejects the market for Google", async () => {
+    getTracker.mockResolvedValue({
+      tracker: { locationCode: 2704, languageCode: "vi" },
+      brands: [],
+      prompts: [],
+    });
+    mentionsSearch.mockRejectedValueOnce(
+      new Error("Invalid Field: 'location_code'."),
+    );
+
+    const result = await researchAiPrompts(input, customer);
+
+    expect(mentionsSearch.mock.lastCall?.[0]).toMatchObject({
+      platform: "chat_gpt",
+      locationCode: 2840,
+      languageCode: "en",
+    });
+    expect(result.source.platform).toBe("chat_gpt");
+    expect(result.prompts.length).toBeGreaterThan(0);
   });
 
   it("refuses research when hosted credits are used up before buying any data", async () => {
@@ -182,7 +245,7 @@ describe("researchAiPrompts", () => {
               },
             ],
           }
-        : ["which seo tool is free?"],
+        : [["which seo tool is free?", "which seo tool is free?"]],
     );
 
     const result = await researchAiPrompts(input, customer);
