@@ -8,7 +8,11 @@ import {
 } from "@/client/components/table/TableBulkActionBar";
 import { researchAiVisibilityPrompts } from "@/serverFunctions/ai-visibility";
 import { normalizeAiSuggestion } from "@/shared/ai-prompt-suggestions";
-import type { AiTrackerState } from "@/shared/ai-visibility";
+import {
+  AI_ENGINE_LABELS,
+  aiMarketLabel,
+  type AiTrackerState,
+} from "@/shared/ai-visibility";
 import { PromptResearchTable } from "./PromptResearchTable";
 import { TopicField } from "./TopicField";
 import { TrackerPatchReview } from "./TrackerPatchReview";
@@ -98,6 +102,18 @@ export function PromptResearchKeyword({
         toolbar={
           <div className="border-b px-4 py-3 border-border">
             <h2 className="font-medium">Prompts about “{keyword}”</h2>
+            {research.data && (
+              <p className="text-xs text-muted-foreground">
+                {
+                  AI_ENGINE_LABELS[
+                    research.data.source.platform === "google"
+                      ? "google_ai_overview"
+                      : "chatgpt"
+                  ]
+                }{" "}
+                · {aiMarketLabel(research.data.source)}
+              </p>
+            )}
           </div>
         }
       />

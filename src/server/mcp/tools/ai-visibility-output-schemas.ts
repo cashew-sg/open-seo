@@ -263,6 +263,15 @@ export function aiToolOutput<T extends z.ZodType>(data: T) {
 }
 export const aiPromptResearchOutput = z.looseObject({
   keyword: text,
+  source: z
+    .looseObject({
+      platform: z.enum(["chat_gpt", "google"]),
+      locationCode: z.number(),
+      languageCode: text,
+    })
+    .describe(
+      "chat_gpt: ChatGPT questions in US English. google: the market's Google AI Overview searches, rewritten as questions.",
+    ),
   prompts: z.array(
     z.looseObject({
       text,
