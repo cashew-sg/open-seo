@@ -116,8 +116,15 @@ export interface AiResearchedPrompt {
   brandMentioned: boolean;
   tracked: boolean;
 }
+/** Where researched prompts come from: ChatGPT in US English, else Google AI Overviews in the market. */
+export interface AiPromptResearchSource {
+  platform: "chat_gpt" | "google";
+  locationCode: number;
+  languageCode: string;
+}
 export interface AiPromptResearchResult {
   keyword: string;
+  source: AiPromptResearchSource;
   /** Most common questions first. */
   prompts: AiResearchedPrompt[];
 }
