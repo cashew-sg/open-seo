@@ -191,6 +191,48 @@ describe("researchAiPrompts", () => {
     ]);
   });
 
+  it("merges Google searches the model rewrites as the same question, with both searches' sources", async () => {
+    getTracker.mockResolvedValue({
+      tracker: { locationCode: 2702, languageCode: "en" },
+      brands: [],
+      prompts: [],
+    });
+    mentionsSearch.mockResolvedValue([
+      {
+        question: "current home loan rates singapore",
+        ai_search_volume: 2900,
+        sources: [{ domain: "a.sg", url: "https://a.sg/rates" }],
+      },
+      {
+        question: "singapore home loan rate",
+        ai_search_volume: 1600,
+        sources: [{ domain: "b.sg", url: "https://b.sg/rates" }],
+      },
+    ]);
+    generateText.mockImplementation(
+      async ({ onStepFinish }: { onStepFinish: (step: object) => unknown }) => {
+        await onStepFinish({});
+        const question = "What are home loan rates in Singapore?";
+        return {
+          output: {
+            relevant: [
+              { id: 0, question },
+              { id: 1, question },
+            ],
+          },
+        };
+      },
+    );
+
+    const result = await researchAiPrompts(input, customer);
+
+    expect(result.prompts).toHaveLength(1);
+    expect(result.prompts[0].sources.map((source) => source.domain)).toEqual([
+      "a.sg",
+      "b.sg",
+    ]);
+  });
+
   it("falls back to US English ChatGPT data when the provider rejects the market for Google", async () => {
     getTracker.mockResolvedValue({
       tracker: { locationCode: 2704, languageCode: "vi" },
