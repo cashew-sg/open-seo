@@ -7,6 +7,7 @@ on:
     - cron: "17 22 * * *"
   push:
     branches: [cashew]
+    paths: [patches/**, .github/workflows/build.yml]
   workflow_dispatch:
 
 permissions:
@@ -21,8 +22,9 @@ concurrency:
 jobs:
   build:
     if: github.repository == 'cashew-sg/open-seo'
-    # The deployment host is amd64, and nothing here sets up emulation.
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-latest
+    # A full build takes about 6 minutes; the default limit is 6 hours.
+    timeout-minutes: 20
     steps:
       - name: Checkout the patches
         uses: actions/checkout@v4
