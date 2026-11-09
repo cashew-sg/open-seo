@@ -21,7 +21,8 @@ concurrency:
 jobs:
   build:
     if: github.repository == 'cashew-sg/open-seo'
-    runs-on: ubuntu-latest
+    # The deployment host is amd64, and nothing here sets up emulation.
+    runs-on: [self-hosted, Linux, X64]
     steps:
       - name: Checkout the patches
         uses: actions/checkout@v4
