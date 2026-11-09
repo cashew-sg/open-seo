@@ -107,6 +107,13 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ steps.version.outputs.release }}
 
+      # Also on skipped builds, so `latest` follows a patch-only change or a
+      # workflow edit without a rebuild. Copies the manifest, no layers.
+      - name: Tag the image as latest
+        env:
+          IMAGE: ${{ steps.version.outputs.image }}
+        run: docker buildx imagetools create --tag ghcr.io/cashew-sg/open-seo:latest "$IMAGE"
+
       - name: Open an issue
         if: failure() && github.event_name == 'schedule'
         env:
