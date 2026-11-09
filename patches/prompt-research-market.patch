@@ -35,10 +35,10 @@ index f68e7589..d75021d6 100644
          }
        />
 diff --git a/src/server/features/ai-visibility/services/aiPromptResearch.test.ts b/src/server/features/ai-visibility/services/aiPromptResearch.test.ts
-index 3df1459d..f19a1fff 100644
+index 9ece11b3..b5e0abfd 100644
 --- a/src/server/features/ai-visibility/services/aiPromptResearch.test.ts
 +++ b/src/server/features/ai-visibility/services/aiPromptResearch.test.ts
-@@ -119,7 +119,7 @@ describe("researchAiPrompts", () => {
+@@ -125,7 +125,7 @@ describe("researchAiPrompts", () => {
    it("reads US English ChatGPT prompts, keeps the ones the model finds on topic, merges near-duplicates, and flags the project", async () => {
      const result = await researchAiPrompts(input, customer);
  
@@ -47,7 +47,7 @@ index 3df1459d..f19a1fff 100644
      expect(mentionsSearch).toHaveBeenCalledWith(
        expect.objectContaining({
          platform: "chat_gpt",
-@@ -143,6 +143,111 @@ describe("researchAiPrompts", () => {
+@@ -149,6 +149,111 @@ describe("researchAiPrompts", () => {
      );
    });
  
@@ -159,7 +159,7 @@ index 3df1459d..f19a1fff 100644
    it("refuses research when hosted credits are used up before buying any data", async () => {
      creditsDepleted.mockResolvedValue({ depleted: true });
  
-@@ -176,7 +281,7 @@ describe("researchAiPrompts", () => {
+@@ -182,7 +287,7 @@ describe("researchAiPrompts", () => {
                },
              ],
            }
@@ -169,7 +169,7 @@ index 3df1459d..f19a1fff 100644
  
      const result = await researchAiPrompts(input, customer);
 diff --git a/src/server/features/ai-visibility/services/aiPromptResearch.ts b/src/server/features/ai-visibility/services/aiPromptResearch.ts
-index 7deab15d..20b26370 100644
+index 3e4a06c9..a74b9613 100644
 --- a/src/server/features/ai-visibility/services/aiPromptResearch.ts
 +++ b/src/server/features/ai-visibility/services/aiPromptResearch.ts
 @@ -16,6 +16,8 @@ import {
@@ -178,10 +178,10 @@ index 7deab15d..20b26370 100644
  } from "@/server/lib/dataforseo";
 +import { invalidFieldName } from "@/server/lib/dataforseo/envelope";
 +import type { LlmPlatform } from "@/server/lib/dataforseo/shared";
- import { AppError } from "@/server/lib/errors";
  import {
    buildChatAgentModel,
-@@ -31,6 +33,7 @@ import { normalizeAiSuggestion } from "@/shared/ai-prompt-suggestions";
+   requireOpenRouterAccess,
+@@ -27,6 +29,7 @@ import { normalizeAiSuggestion } from "@/shared/ai-prompt-suggestions";
  import {
    AI_DEFAULT_TOPIC,
    type AiPromptResearchResult,
@@ -189,7 +189,7 @@ index 7deab15d..20b26370 100644
    type AiResearchedPrompt,
  } from "@/shared/ai-visibility";
  import type { ResearchAiPromptsInput } from "@/types/schemas/aiPromptResearch";
-@@ -68,6 +71,16 @@ type CachedResearch = z.infer<typeof cachedResearchSchema>;
+@@ -64,6 +67,16 @@ type CachedResearch = z.infer<typeof cachedResearchSchema>;
  const relevanceOutputSchema = z.object({
    relevant: z.array(z.number().int()),
  });
@@ -206,10 +206,10 @@ index 7deab15d..20b26370 100644
  
  /** Website setup keywords first, then tracker topics the user added. */
  export async function listAiResearchKeywords(input: {
-@@ -101,16 +114,17 @@ export async function researchAiPrompts(
-       "You need usage credits to research prompts.",
-     );
-   const openRouter = await requireOpenRouterAccess();
+@@ -86,35 +99,38 @@ export async function researchAiPrompts(
+   customer: BillingCustomerContext,
+ ): Promise<AiPromptResearchResult> {
+   await assertPaidAiSearchPlan(customer.organizationId, "Prompt Research");
 -  const state = await getTracker({ projectId: input.projectId });
 +  const [state, project] = await Promise.all([
 +    getTracker({ projectId: input.projectId }),
@@ -219,32 +219,46 @@ index 7deab15d..20b26370 100644
 +    ),
 +  ]);
    const keyword = normalizeAiSuggestion(input.keyword);
--  // DataForSEO has ChatGPT prompt data only in US English.
--  const loaded = await loadPrompts(
--    {
--      topic: keyword,
--      platform: "chat_gpt",
--      locationCode: CHATGPT_LOCATION_CODE,
--      languageCode: CHATGPT_LANGUAGE_CODE,
--    },
-+  const { source: origin, prompts: loaded } = await loadResearch(
-+    keyword,
-+    state.tracker ?? project,
+   // Admit the whole search before buying prompt data, so a search that pays
+   // for questions can always finish the relevance check that shows them.
+-  const { loaded, relevant } = await withResearchAdmission(
++  const { origin, loaded, relevant } = await withResearchAdmission(
      customer,
+     "You need usage credits to research prompts.",
+     async () => {
+       const openRouter = await requireOpenRouterAccess();
+-      // DataForSEO has ChatGPT prompt data only in US English.
+-      const found = await loadPrompts(
+-        {
+-          topic: keyword,
+-          platform: "chat_gpt",
+-          locationCode: CHATGPT_LOCATION_CODE,
+-          languageCode: CHATGPT_LANGUAGE_CODE,
+-        },
++      const { source, prompts: found } = await loadResearch(
++        keyword,
++        state.tracker ?? project,
+         customer,
+       );
+       const matched = await relevantQuestions(
+         {
+           projectId: input.projectId,
++          project,
+           keyword,
+-          prompts: found.prompts,
++          platform: source.platform,
++          prompts: found,
+           openRouter,
+         },
+         customer,
+       );
+-      return { loaded: found, relevant: matched };
++      return { origin: source, loaded: found, relevant: matched };
+     },
    );
    const ownBrand = state.brands.find((brand) => brand.own);
-@@ -122,23 +136,32 @@ export async function researchAiPrompts(
-   const relevant = await relevantQuestions(
-     {
-       projectId: input.projectId,
-+      project,
-       keyword,
--      prompts: loaded.prompts,
-+      platform: origin.platform,
-+      prompts: loaded,
-       openRouter,
-     },
-     customer,
+@@ -124,16 +140,23 @@ export async function researchAiPrompts(
+       .map((prompt) => normalizeAiSuggestion(prompt.text)),
    );
    const prompts = mergeNearDuplicates(
 -    loaded.prompts.filter((item) => relevant.has(item.question)),
@@ -271,7 +285,7 @@ index 7deab15d..20b26370 100644
        sources,
        ownDomainCited: sources.some((source) => source.own),
        brandMentioned:
-@@ -149,13 +172,65 @@ export async function researchAiPrompts(
+@@ -144,13 +167,65 @@ export async function researchAiPrompts(
        ),
      };
    });
@@ -339,7 +353,7 @@ index 7deab15d..20b26370 100644
      locationCode: number;
      languageCode: string;
    },
-@@ -170,11 +245,14 @@ async function loadPrompts(
+@@ -165,11 +240,14 @@ async function loadPrompts(
  
    const client = createDataforseoClient(customer);
    // Answers often use the category words when the question doesn't. Short
@@ -356,7 +370,7 @@ index 7deab15d..20b26370 100644
        match_type:
          words(request.topic).length <= 3 ? "partial_match" : "word_match",
      },
-@@ -224,20 +302,17 @@ async function loadPrompts(
+@@ -219,20 +297,17 @@ async function loadPrompts(
  async function relevantQuestions(
    input: {
      projectId: string;
@@ -383,7 +397,7 @@ index 7deab15d..20b26370 100644
    const overview = sections
      .find((section) => section.key === "business_overview")
      ?.content.slice(0, 3500);
-@@ -250,14 +325,17 @@ async function relevantQuestions(
+@@ -245,14 +320,17 @@ async function relevantQuestions(
        answer: item.answer.slice(0, RELEVANCE_ANSWER_CHARS),
      })),
    });
@@ -405,7 +419,7 @@ index 7deab15d..20b26370 100644
  
    const result = await generateText({
      model: buildChatAgentModel(
-@@ -265,11 +343,13 @@ async function relevantQuestions(
+@@ -260,11 +338,13 @@ async function relevantQuestions(
        await getOptionalEnvValue("OPENROUTER_MODEL"),
        "low",
      ),
@@ -423,7 +437,7 @@ index 7deab15d..20b26370 100644
      prompt,
      // Admitted above, so settle the actual cost even if credits ran out since.
      onStepFinish: async (step) => {
-@@ -284,15 +364,19 @@ async function relevantQuestions(
+@@ -279,15 +359,19 @@ async function relevantQuestions(
        ]);
      },
    });
@@ -468,10 +482,10 @@ index de09246f..473177f4 100644
      z.looseObject({
        text,
 diff --git a/src/server/mcp/tools/ai-visibility-tools.ts b/src/server/mcp/tools/ai-visibility-tools.ts
-index d3335728..6fbc590d 100644
+index dadd2c96..86adc604 100644
 --- a/src/server/mcp/tools/ai-visibility-tools.ts
 +++ b/src/server/mcp/tools/ai-visibility-tools.ts
-@@ -190,7 +190,7 @@ export const researchAiVisibilityPromptsTool = defineAiTool({
+@@ -192,7 +192,7 @@ export const researchAiVisibilityPromptsTool = defineAiTool({
    openWorld: true,
    path: "research",
    description:
@@ -481,10 +495,10 @@ index d3335728..6fbc590d 100644
    summarize: (d) =>
      `Found ${d.prompts.length} relevant prompts for "${d.keyword}".`,
 diff --git a/src/shared/ai-visibility.ts b/src/shared/ai-visibility.ts
-index b3e44029..e4dbe0b6 100644
+index d414fee3..110ae5c5 100644
 --- a/src/shared/ai-visibility.ts
 +++ b/src/shared/ai-visibility.ts
-@@ -116,8 +116,15 @@ export interface AiResearchedPrompt {
+@@ -137,8 +137,15 @@ export interface AiResearchedPrompt {
    brandMentioned: boolean;
    tracked: boolean;
  }
