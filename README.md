@@ -14,12 +14,14 @@ code never lands here.
 - **`build.yml`** runs daily, on a push here that changes the patch or the
   workflow, and by hand. For a release and patch not yet built, it applies the
   patch, runs upstream's `ci:check` and tests, and publishes
-  `ghcr.io/cashew-sg/open-seo:<release>-sg.<patch hash>` (amd64). Every
+  `ghcr.io/cashew-sg/open-seo-standalone:<release>-sg.<patch hash>` (amd64),
+  the image of upstream's multi-container stack (`deploy/standalone`). Every
   successful run moves `latest` to that image. A failed nightly opens an issue
   and publishes nothing.
 - **Deploying** is by hand: redeploy the Dokploy app, which pulls `latest`
-  (`pull_policy: always`). To pin or roll back, set `OPEN_SEO_IMAGE` to a
-  versioned tag.
+  (`pull_policy: always`). To pin or roll back, set `OPENSEO_IMAGE` to a
+  versioned tag. The old single-container image, `ghcr.io/cashew-sg/open-seo`,
+  is no longer built; its last tags stay on GHCR.
 
 **Changing the patch:** the source is the `sg` branch, an upstream release tag
 plus the change as commits. Edit and commit there, then regenerate and push here:
@@ -27,4 +29,4 @@ plus the change as commits. Edit and commit there, then regenerate and push here
 rebase `sg` onto the new tag first.
 
 **Retire the fork** once an upstream release fixes #508: point Dokploy back at
-`ghcr.io/every-app/open-seo:<version>` and archive this repository.
+`ghcr.io/every-app/open-seo-standalone:<version>` and archive this repository.

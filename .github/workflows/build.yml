@@ -1,7 +1,9 @@
 name: Build
 
-# Applies patches/ to the newest upstream release and publishes the image, once per
-# release and patch. CI pushes no git ref, so upstream's history never enters this repo.
+# Applies patches/ to the newest upstream release and publishes the standalone image
+# (upstream's deploy/standalone), once per release and patch. Its data format differs
+# from the old single-container image (ghcr.io/cashew-sg/open-seo), so it has its own
+# name. CI pushes no git ref, so upstream's history never enters this repo.
 on:
   schedule:
     - cron: "17 22 * * *"
@@ -36,7 +38,7 @@ jobs:
             | sed 's|.*refs/tags/||' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
           patch=$(cat patches/*.patch | sha256sum | cut -c1-7)
           echo "release=$release" >> "$GITHUB_OUTPUT"
-          echo "image=ghcr.io/cashew-sg/open-seo:${release#v}-sg.$patch" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/cashew-sg/open-seo-standalone:${release#v}-sg.$patch" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -100,7 +102,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: upstream
-          file: upstream/deploy/docker/Dockerfile
+          file: upstream/deploy/standalone/Dockerfile
           push: true
           # The deployment host is amd64; arm64 under QEMU would triple the build.
           platforms: linux/amd64
@@ -115,7 +117,7 @@ jobs:
       - name: Tag the image as latest
         env:
           IMAGE: ${{ steps.version.outputs.image }}
-        run: docker buildx imagetools create --tag ghcr.io/cashew-sg/open-seo:latest "$IMAGE"
+        run: docker buildx imagetools create --tag ghcr.io/cashew-sg/open-seo-standalone:latest "$IMAGE"
 
       - name: Open an issue
         if: failure() && github.event_name == 'schedule'
