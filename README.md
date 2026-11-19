@@ -1,11 +1,16 @@
 # cashew-sg/open-seo
 
-[OpenSEO](https://github.com/every-app/open-seo) with one change, until upstream
-ships it: **Prompt Research in the tracker's market**
-([#508](https://github.com/every-app/open-seo/issues/508)). Outside US English it
-researches the market's Google AI Overview searches, matched on the search only
-and rewritten as questions, instead of US ChatGPT data. A market DataForSEO has
-no Google data for falls back to US ChatGPT data.
+[OpenSEO](https://github.com/every-app/open-seo) with two changes, until upstream
+ships them:
+
+- **Prompt Research in the tracker's market**
+  ([#508](https://github.com/every-app/open-seo/issues/508)). Outside US English it
+  researches the market's Google AI Overview searches, matched on the search only
+  and rewritten as questions, instead of US ChatGPT data. A market DataForSEO has
+  no Google data for falls back to US ChatGPT data.
+- **The standalone web proxy survives a redeploy.** Upstream's nginx resolves
+  `runtime` once at startup, so a redeploy that recreates `runtime` but not `web`
+  returns 502 until nginx reloads. The patched config looks it up per request.
 
 This branch (`cashew`, the default) holds only the patch and the build. Upstream's
 code never lands here.
@@ -20,12 +25,18 @@ code never lands here.
   and publishes nothing.
 - **Deploying** is by hand in Dokploy; see [Dokploy](#dokploy).
 
-**Changing the patch:** the source is the `sg` branch, an upstream release tag
-plus the change as commits. Edit and commit there, then regenerate and push here:
-`git diff <tag> sg -- . ':!.agents/skills' ':!plugins' > patches/prompt-research-market.patch`.
+**Changing the patches:** the source is the `sg` branch, an upstream release tag
+plus the changes as commits. Edit and commit there, then regenerate and push here:
+
+```sh
+git diff <tag> sg -- . ':!.agents/skills' ':!plugins' ':!deploy' > patches/prompt-research-market.patch
+git diff <tag> sg -- deploy > patches/standalone-nginx-resolver.patch
+```
+
 The image ships neither skills nor plugins, and upstream's `ci:check` fails when
 the plugin skills differ from what is committed, so those stay on `sg` for
-upstreaming. When upstream moves, rebase `sg` onto the new tag first.
+upstreaming. When upstream moves, rebase `sg` onto the new tag first. When
+upstream ships one change, drop its commits from `sg` and delete its patch.
 
 ## Dokploy
 
