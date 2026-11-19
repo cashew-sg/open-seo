@@ -35,10 +35,10 @@ index f68e7589..d75021d6 100644
          }
        />
 diff --git a/src/server/features/ai-visibility/services/aiPromptResearch.test.ts b/src/server/features/ai-visibility/services/aiPromptResearch.test.ts
-index 9ece11b3..b5e0abfd 100644
+index 3f6756fa..4b49f15b 100644
 --- a/src/server/features/ai-visibility/services/aiPromptResearch.test.ts
 +++ b/src/server/features/ai-visibility/services/aiPromptResearch.test.ts
-@@ -125,7 +125,7 @@ describe("researchAiPrompts", () => {
+@@ -131,7 +131,7 @@ describe("researchAiPrompts", () => {
    it("reads US English ChatGPT prompts, keeps the ones the model finds on topic, merges near-duplicates, and flags the project", async () => {
      const result = await researchAiPrompts(input, customer);
  
@@ -47,7 +47,7 @@ index 9ece11b3..b5e0abfd 100644
      expect(mentionsSearch).toHaveBeenCalledWith(
        expect.objectContaining({
          platform: "chat_gpt",
-@@ -149,6 +149,111 @@ describe("researchAiPrompts", () => {
+@@ -155,6 +155,111 @@ describe("researchAiPrompts", () => {
      );
    });
  
@@ -159,7 +159,7 @@ index 9ece11b3..b5e0abfd 100644
    it("refuses research when hosted credits are used up before buying any data", async () => {
      creditsDepleted.mockResolvedValue({ depleted: true });
  
-@@ -182,7 +287,7 @@ describe("researchAiPrompts", () => {
+@@ -188,7 +293,7 @@ describe("researchAiPrompts", () => {
                },
              ],
            }
@@ -169,10 +169,10 @@ index 9ece11b3..b5e0abfd 100644
  
      const result = await researchAiPrompts(input, customer);
 diff --git a/src/server/features/ai-visibility/services/aiPromptResearch.ts b/src/server/features/ai-visibility/services/aiPromptResearch.ts
-index 3e4a06c9..a74b9613 100644
+index 4145df80..e7b4e0ff 100644
 --- a/src/server/features/ai-visibility/services/aiPromptResearch.ts
 +++ b/src/server/features/ai-visibility/services/aiPromptResearch.ts
-@@ -16,6 +16,8 @@ import {
+@@ -17,6 +17,8 @@ import {
    CHATGPT_LOCATION_CODE,
    createDataforseoClient,
  } from "@/server/lib/dataforseo";
@@ -181,15 +181,15 @@ index 3e4a06c9..a74b9613 100644
  import {
    buildChatAgentModel,
    requireOpenRouterAccess,
-@@ -27,6 +29,7 @@ import { normalizeAiSuggestion } from "@/shared/ai-prompt-suggestions";
+@@ -28,6 +30,7 @@ import { normalizeAiSuggestion } from "@/shared/ai-prompt-suggestions";
  import {
    AI_DEFAULT_TOPIC,
    type AiPromptResearchResult,
 +  type AiPromptResearchSource,
    type AiResearchedPrompt,
  } from "@/shared/ai-visibility";
- import type { ResearchAiPromptsInput } from "@/types/schemas/aiPromptResearch";
-@@ -64,6 +67,16 @@ type CachedResearch = z.infer<typeof cachedResearchSchema>;
+ import {
+@@ -69,6 +72,16 @@ type CachedResearch = z.infer<typeof cachedResearchSchema>;
  const relevanceOutputSchema = z.object({
    relevant: z.array(z.number().int()),
  });
@@ -204,9 +204,9 @@ index 3e4a06c9..a74b9613 100644
 +// Original provider question -> the prompt text shown for it.
 +const relevanceCacheSchema = z.array(z.tuple([z.string(), z.string()]));
  
- /** Website setup keywords first, then tracker topics the user added. */
- export async function listAiResearchKeywords(input: {
-@@ -86,35 +99,38 @@ export async function researchAiPrompts(
+ /**
+  * Saved keywords first, then tracker topics the user added. Tracked topics
+@@ -123,35 +136,38 @@ export async function researchAiPrompts(
    customer: BillingCustomerContext,
  ): Promise<AiPromptResearchResult> {
    await assertPaidAiSearchPlan(customer.organizationId, "Prompt Research");
@@ -257,7 +257,7 @@ index 3e4a06c9..a74b9613 100644
      },
    );
    const ownBrand = state.brands.find((brand) => brand.own);
-@@ -124,16 +140,23 @@ export async function researchAiPrompts(
+@@ -161,16 +177,23 @@ export async function researchAiPrompts(
        .map((prompt) => normalizeAiSuggestion(prompt.text)),
    );
    const prompts = mergeNearDuplicates(
@@ -285,7 +285,7 @@ index 3e4a06c9..a74b9613 100644
        sources,
        ownDomainCited: sources.some((source) => source.own),
        brandMentioned:
-@@ -144,13 +167,65 @@ export async function researchAiPrompts(
+@@ -181,13 +204,65 @@ export async function researchAiPrompts(
        ),
      };
    });
@@ -353,7 +353,7 @@ index 3e4a06c9..a74b9613 100644
      locationCode: number;
      languageCode: string;
    },
-@@ -165,11 +240,14 @@ async function loadPrompts(
+@@ -202,11 +277,14 @@ async function loadPrompts(
  
    const client = createDataforseoClient(customer);
    // Answers often use the category words when the question doesn't. Short
@@ -370,7 +370,7 @@ index 3e4a06c9..a74b9613 100644
        match_type:
          words(request.topic).length <= 3 ? "partial_match" : "word_match",
      },
-@@ -219,20 +297,17 @@ async function loadPrompts(
+@@ -256,20 +334,17 @@ async function loadPrompts(
  async function relevantQuestions(
    input: {
      projectId: string;
@@ -397,7 +397,7 @@ index 3e4a06c9..a74b9613 100644
    const overview = sections
      .find((section) => section.key === "business_overview")
      ?.content.slice(0, 3500);
-@@ -245,14 +320,17 @@ async function relevantQuestions(
+@@ -282,14 +357,17 @@ async function relevantQuestions(
        answer: item.answer.slice(0, RELEVANCE_ANSWER_CHARS),
      })),
    });
@@ -419,7 +419,7 @@ index 3e4a06c9..a74b9613 100644
  
    const result = await generateText({
      model: buildChatAgentModel(
-@@ -260,11 +338,13 @@ async function relevantQuestions(
+@@ -297,11 +375,13 @@ async function relevantQuestions(
        await getOptionalEnvValue("OPENROUTER_MODEL"),
        "low",
      ),
@@ -437,7 +437,7 @@ index 3e4a06c9..a74b9613 100644
      prompt,
      // Admitted above, so settle the actual cost even if credits ran out since.
      onStepFinish: async (step) => {
-@@ -279,15 +359,19 @@ async function relevantQuestions(
+@@ -316,15 +396,19 @@ async function relevantQuestions(
        ]);
      },
    });
@@ -482,7 +482,7 @@ index de09246f..473177f4 100644
      z.looseObject({
        text,
 diff --git a/src/server/mcp/tools/ai-visibility-tools.ts b/src/server/mcp/tools/ai-visibility-tools.ts
-index bb38d6f1..d3367387 100644
+index 0a21a596..cb73289d 100644
 --- a/src/server/mcp/tools/ai-visibility-tools.ts
 +++ b/src/server/mcp/tools/ai-visibility-tools.ts
 @@ -192,7 +192,7 @@ export const researchAiVisibilityPromptsTool = defineAiTool({
@@ -490,15 +490,15 @@ index bb38d6f1..d3367387 100644
    path: "research",
    description:
 -    "Find questions people ask about a keyword, with ChatGPT's answer to each, the sources it cited, and whether the project's domain is cited or its brand mentioned. US English data only. The questions come from a database built mostly from Google \"People also ask\" questions; they are not logged ChatGPT prompts, and nobody can see real ChatGPT prompt volume. A model keeps only the questions that use the keyword in the business's sense, so niche keywords may return few prompts. The most common questions come first. Costs credits for one prompt search and one relevance check per keyword, cached for 24 hours. Requires a paid plan on hosted OpenSEO. Nothing is saved or collected: save picked prompts with source prompt_research through save_ai_visibility_tracker. For new prompt ideas written from project context, use generate_ai_visibility_prompts.",
-+    "Find questions people ask about a keyword in the tracker's market, with an AI answer to each, the sources it cited, and whether the project's domain is cited or its brand mentioned. In US English the questions and ChatGPT's answers come from a database built mostly from Google \"People also ask\" questions; they are not logged ChatGPT prompts, and nobody can see real ChatGPT prompt volume. ChatGPT data exists only in US English, so every other market uses its Google searches that showed an AI Overview, rewritten as questions, with the overview's cited sources. `source` says which. A model keeps only the questions that use the keyword in the business's sense, so niche keywords may return few prompts. The most common questions come first and near-duplicates are merged. Costs credits for one prompt search and one relevance check per keyword, cached for 24 hours. Requires a paid plan on hosted OpenSEO. Nothing is saved or collected: save picked prompts with source prompt_research through save_ai_visibility_tracker. For new prompt ideas written from project context, use generate_ai_visibility_prompts.",
++    "Find questions people ask about a keyword in the tracker's market (the project's when there is no tracker), with an AI answer to each, the sources it cited, and whether the project's domain is cited or its brand mentioned. In US English the questions and ChatGPT's answers come from a database built mostly from Google \"People also ask\" questions; they are not logged ChatGPT prompts, and nobody can see real ChatGPT prompt volume. ChatGPT data exists only in US English, so every other market uses its Google searches that showed an AI Overview, rewritten as questions, with the overview's cited sources. `source` says which. A model keeps only the questions that use the keyword in the business's sense, so niche keywords may return few prompts. The most common questions come first and near-duplicates are merged. Costs credits for one prompt search and one relevance check per keyword, cached for 24 hours. Requires a paid plan on hosted OpenSEO. Nothing is saved or collected: save picked prompts with source prompt_research through save_ai_visibility_tracker. For new prompt ideas written from project context, use generate_ai_visibility_prompts.",
    execute: (s, a, b) => s.researchPrompts(a, b),
    summarize: (d) =>
      `Found ${d.prompts.length} relevant prompts for "${d.keyword}".`,
 diff --git a/src/shared/ai-visibility.ts b/src/shared/ai-visibility.ts
-index d414fee3..110ae5c5 100644
+index 28253dc8..730083bb 100644
 --- a/src/shared/ai-visibility.ts
 +++ b/src/shared/ai-visibility.ts
-@@ -137,8 +137,15 @@ export interface AiResearchedPrompt {
+@@ -159,8 +159,15 @@ export interface AiResearchedPrompt {
    brandMentioned: boolean;
    tracked: boolean;
  }
@@ -514,3 +514,29 @@ index d414fee3..110ae5c5 100644
    /** Most common questions first. */
    prompts: AiResearchedPrompt[];
  }
+diff --git a/web/content/docs/ai-visibility.md b/web/content/docs/ai-visibility.md
+index 3b2a138d..8a908d66 100644
+--- a/web/content/docs/ai-visibility.md
++++ b/web/content/docs/ai-visibility.md
+@@ -11,7 +11,7 @@ Add your website, then complete the setup shown on the AI visibility pages. Rese
+ 
+ ## Research, explore, and track
+ 
+-- **Prompt Research:** analyze a keyword to find the questions people ask about it, with ChatGPT's answers and cited sources. Research currently covers US English. The questions come from DataForSEO's dataset, built mostly from Google "People also ask" questions; they are not logged ChatGPT prompts, and OpenSEO does not estimate how often they are asked in AI. The Relevant keywords list is yours to change: select **Edit** to add, reword, or remove keywords. Topics you track stay on the list.
++- **Prompt Research:** analyze a keyword to find the questions people ask about it in your tracker's market, with an AI answer to each and its cited sources. In US English, the questions and ChatGPT's answers come from DataForSEO's dataset, built mostly from Google "People also ask" questions; they are not logged ChatGPT prompts, and OpenSEO does not estimate how often they are asked in AI. Every other market uses its Google searches that showed an AI Overview, rewritten as questions, with the overview's cited sources. The research header says which source a result uses. The Relevant keywords list is yours to change: select **Edit** to add, reword, or remove keywords. Topics you track stay on the list.
+ - **Prompt Explorer:** try one prompt in ChatGPT, or add Claude, Gemini, and Perplexity to compare answers and available citations. These are API model answers and can differ from consumer-site answers collected by tracking.
+ - **Prompt Tracking:** save exact questions under topics, select engines and a market, then run a check or enable daily, weekly, or monthly tracking. Editing a question's wording starts a new question, so earlier answers keep the wording they were collected for. ChatGPT and Gemini are selected by default; Google AI Overviews, Google AI Mode, Claude, and Perplexity are also supported. Enabling tracking starts an initial check.
+ - **Competitors and Citations:** open these tabs in Prompt Tracking to review saved brand mentions, competitor appearances, and cited pages. Competitors come from shared Project context. Your brand counts as mentioned when its name or domain appears in an answer, and as cited when the answer links to your site. A Google AI Mode answer is saved with its product cards, so the product name and store on a card count too, and a site it links to in its text counts as cited. The name comes from **Brand name** in project context, or from the project name when that's blank, so you can name a project anything. A project still named "Default" goes by its domain, so `acme.com` and "Acme" both count. A new brand name applies from the next check. A failed check is not evidence that your brand was absent.
+diff --git a/web/content/docs/mcp-tools.md b/web/content/docs/mcp-tools.md
+index 1aa86e9a..2765cbb6 100644
+--- a/web/content/docs/mcp-tools.md
++++ b/web/content/docs/mcp-tools.md
+@@ -23,7 +23,7 @@ OpenSEO MCP exposes tools for SEO research workflows:
+ - Find keywords a domain already ranks for.
+ - Check backlink and referring-domain overview data.
+ - Explore a prompt in ChatGPT or compare answers and available citations across selected AI models. ChatGPT is the default; uncached answers use credits.
+-- Research questions about a keyword with ChatGPT's answers and cited sources (uses credits).
++- Research questions about a keyword in the tracker's market, with AI answers and cited sources: ChatGPT in US English, Google AI Overviews elsewhere (uses credits).
+ - Add and remove the keywords listed on Prompt Research (free, no credits).
+ - Configure AI prompt tracking, preview cost, and start or pause scheduled checks.
+ - Read and export saved AI answers, trends, citations, and competitor appearances without using credits.
