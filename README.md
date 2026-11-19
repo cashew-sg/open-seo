@@ -22,8 +22,10 @@ code never lands here.
 
 **Changing the patch:** the source is the `sg` branch, an upstream release tag
 plus the change as commits. Edit and commit there, then regenerate and push here:
-`git diff <tag> sg > patches/prompt-research-market.patch`. When upstream moves,
-rebase `sg` onto the new tag first.
+`git diff <tag> sg -- . ':!.agents/skills' ':!plugins' > patches/prompt-research-market.patch`.
+The image ships neither skills nor plugins, and upstream's `ci:check` fails when
+the plugin skills differ from what is committed, so those stay on `sg` for
+upstreaming. When upstream moves, rebase `sg` onto the new tag first.
 
 ## Dokploy
 

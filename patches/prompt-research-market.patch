@@ -35,7 +35,7 @@ index f68e7589..d75021d6 100644
          }
        />
 diff --git a/src/server/features/ai-visibility/services/aiPromptResearch.test.ts b/src/server/features/ai-visibility/services/aiPromptResearch.test.ts
-index 3f6756fa..316500dc 100644
+index 3f6756fa..7f9312e2 100644
 --- a/src/server/features/ai-visibility/services/aiPromptResearch.test.ts
 +++ b/src/server/features/ai-visibility/services/aiPromptResearch.test.ts
 @@ -14,10 +14,17 @@ const {
@@ -83,7 +83,7 @@ index 3f6756fa..316500dc 100644
      expect(mentionsSearch).toHaveBeenCalledWith(
        expect.objectContaining({
          platform: "chat_gpt",
-@@ -155,6 +163,144 @@ describe("researchAiPrompts", () => {
+@@ -155,6 +163,162 @@ describe("researchAiPrompts", () => {
      );
    });
  
@@ -95,7 +95,6 @@ index 3f6756fa..316500dc 100644
 +    });
 +    mentionsSearch.mockResolvedValue([
 +      { question: "sg mortgage rates", ai_search_volume: 2900 },
-+      { question: "dbs", ai_search_volume: 165000 },
 +    ]);
 +    generateText.mockImplementation(
 +      async ({ onStepFinish }: { onStepFinish: (step: object) => unknown }) => {
@@ -225,10 +224,29 @@ index 3f6756fa..316500dc 100644
 +    expect(result.prompts.length).toBeGreaterThan(0);
 +  });
 +
++  it("skips the Google search in a market the provider already rejected", async () => {
++    getTracker.mockResolvedValue({
++      tracker: { locationCode: 2704, languageCode: "vi" },
++      brands: [],
++      prompts: [],
++    });
++    getCached.mockImplementation(async (key: string) =>
++      key === "ai-visibility:prompt-research-unsupported" ? true : null,
++    );
++
++    const result = await researchAiPrompts(input, customer);
++
++    expect(mentionsSearch).toHaveBeenCalledOnce();
++    expect(mentionsSearch.mock.lastCall?.[0]).toMatchObject({
++      platform: "chat_gpt",
++    });
++    expect(result.source.platform).toBe("chat_gpt");
++  });
++
    it("refuses research when hosted credits are used up before buying any data", async () => {
      creditsDepleted.mockResolvedValue({ depleted: true });
  
-@@ -188,7 +334,7 @@ describe("researchAiPrompts", () => {
+@@ -188,7 +352,7 @@ describe("researchAiPrompts", () => {
                },
              ],
            }
@@ -238,19 +256,24 @@ index 3f6756fa..316500dc 100644
  
      const result = await researchAiPrompts(input, customer);
 diff --git a/src/server/features/ai-visibility/services/aiPromptResearch.ts b/src/server/features/ai-visibility/services/aiPromptResearch.ts
-index 4145df80..62bba696 100644
+index 4145df80..1c14f131 100644
 --- a/src/server/features/ai-visibility/services/aiPromptResearch.ts
 +++ b/src/server/features/ai-visibility/services/aiPromptResearch.ts
-@@ -17,6 +17,8 @@ import {
-   CHATGPT_LOCATION_CODE,
-   createDataforseoClient,
- } from "@/server/lib/dataforseo";
-+import { invalidFieldName } from "@/server/lib/dataforseo/envelope";
+@@ -12,11 +12,8 @@ import { ProjectContextRepository } from "@/server/features/project-context/repo
+ import { ProjectRepository } from "@/server/features/projects/repositories/ProjectRepository";
+ import { requireOpenRouterCostUsd } from "@/server/lib/chatAgent";
+ import { AppError } from "@/server/lib/errors";
+-import {
+-  CHATGPT_LANGUAGE_CODE,
+-  CHATGPT_LOCATION_CODE,
+-  createDataforseoClient,
+-} from "@/server/lib/dataforseo";
++import { createDataforseoClient } from "@/server/lib/dataforseo";
 +import type { LlmPlatform } from "@/server/lib/dataforseo/shared";
  import {
    buildChatAgentModel,
    requireOpenRouterAccess,
-@@ -28,6 +30,7 @@ import { normalizeAiSuggestion } from "@/shared/ai-prompt-suggestions";
+@@ -28,6 +25,7 @@ import { normalizeAiSuggestion } from "@/shared/ai-prompt-suggestions";
  import {
    AI_DEFAULT_TOPIC,
    type AiPromptResearchResult,
@@ -258,7 +281,20 @@ index 4145df80..62bba696 100644
    type AiResearchedPrompt,
  } from "@/shared/ai-visibility";
  import {
-@@ -69,6 +72,16 @@ type CachedResearch = z.infer<typeof cachedResearchSchema>;
+@@ -35,6 +33,12 @@ import {
+   type ResearchAiPromptsInput,
+   type UpdateAiResearchKeywordsInput,
+ } from "@/types/schemas/aiPromptResearch";
++import {
++  isRejectedMarketError,
++  rememberRejectedMarket,
++  researchSource,
++  wasMarketRejected,
++} from "./aiPromptResearchSource";
+ import { aiPromptIsBranded, ownedAiDomain } from "./aiVisibilityMatching";
+ import { AiVisibilityRepository as repo } from "../repositories/AiVisibilityRepository";
+ import { getTracker } from "./aiVisibilityState";
+@@ -69,6 +73,16 @@ type CachedResearch = z.infer<typeof cachedResearchSchema>;
  const relevanceOutputSchema = z.object({
    relevant: z.array(z.number().int()),
  });
@@ -275,7 +311,7 @@ index 4145df80..62bba696 100644
  
  /**
   * Saved keywords first, then tracker topics the user added. Tracked topics
-@@ -123,54 +136,64 @@ export async function researchAiPrompts(
+@@ -123,54 +137,64 @@ export async function researchAiPrompts(
    customer: BillingCustomerContext,
  ): Promise<AiPromptResearchResult> {
    await assertPaidAiSearchPlan(customer.organizationId, "Prompt Research");
@@ -361,7 +397,7 @@ index 4145df80..62bba696 100644
        sources,
        ownDomainCited: sources.some((source) => source.own),
        brandMentioned:
-@@ -181,13 +204,65 @@ export async function researchAiPrompts(
+@@ -181,13 +205,38 @@ export async function researchAiPrompts(
        ),
      };
    });
@@ -370,9 +406,8 @@ index 4145df80..62bba696 100644
 +}
 +
 +/**
-+ * LLM Mentions covers Google only in some markets. When it rejects this
-+ * market's location or language, research uses US English ChatGPT data, and
-+ * the result's source says so.
++ * When LLM Mentions has no Google data for this market, research uses US
++ * English ChatGPT data, and the result's source says so.
 + */
 +async function loadResearch(
 +  topic: string,
@@ -380,45 +415,19 @@ index 4145df80..62bba696 100644
 +  customer: BillingCustomerContext,
 +): Promise<{ source: AiPromptResearchSource; prompts: CachedPrompt[] }> {
 +  const source = researchSource(market);
-+  try {
-+    const { prompts } = await loadPrompts({ topic, ...source }, customer);
-+    return { source, prompts };
-+  } catch (error) {
-+    const field =
-+      error instanceof Error ? invalidFieldName(error.message) : null;
-+    if (
-+      source.platform !== "google" ||
-+      (field !== "location_code" && field !== "language_code")
-+    )
-+      throw error;
-+    const fallback = researchSource(null);
-+    const { prompts } = await loadPrompts({ topic, ...fallback }, customer);
-+    return { source: fallback, prompts };
++  const google = source.platform === "google";
++  if (!google || !(await wasMarketRejected(source))) {
++    try {
++      const { prompts } = await loadPrompts({ topic, ...source }, customer);
++      return { source, prompts };
++    } catch (error) {
++      if (!google || !isRejectedMarketError(error)) throw error;
++      await rememberRejectedMarket(source);
++    }
 +  }
-+}
-+
-+/**
-+ * DataForSEO has ChatGPT prompt data only in US English. Elsewhere it has the
-+ * market's Google AI Overview queries, which are local where ChatGPT's are not.
-+ */
-+function researchSource(
-+  market: { locationCode: number; languageCode: string } | null | undefined,
-+): AiPromptResearchSource {
-+  if (
-+    !market ||
-+    (market.locationCode === CHATGPT_LOCATION_CODE &&
-+      market.languageCode === CHATGPT_LANGUAGE_CODE)
-+  )
-+    return {
-+      platform: "chat_gpt",
-+      locationCode: CHATGPT_LOCATION_CODE,
-+      languageCode: CHATGPT_LANGUAGE_CODE,
-+    };
-+  return {
-+    platform: "google",
-+    locationCode: market.locationCode,
-+    languageCode: market.languageCode,
-+  };
++  const fallback = researchSource(null);
++  const { prompts } = await loadPrompts({ topic, ...fallback }, customer);
++  return { source: fallback, prompts };
  }
  
  async function loadPrompts(
@@ -429,7 +438,7 @@ index 4145df80..62bba696 100644
      locationCode: number;
      languageCode: string;
    },
-@@ -202,11 +277,14 @@ async function loadPrompts(
+@@ -202,11 +251,14 @@ async function loadPrompts(
  
    const client = createDataforseoClient(customer);
    // Answers often use the category words when the question doesn't. Short
@@ -446,7 +455,7 @@ index 4145df80..62bba696 100644
        match_type:
          words(request.topic).length <= 3 ? "partial_match" : "word_match",
      },
-@@ -256,24 +334,22 @@ async function loadPrompts(
+@@ -256,24 +308,22 @@ async function loadPrompts(
  async function relevantQuestions(
    input: {
      projectId: string;
@@ -479,7 +488,7 @@ index 4145df80..62bba696 100644
      business: { name: project?.name, domain: project?.domain, overview },
      keyword: input.keyword,
      questions: input.prompts.map((item, id) => ({
-@@ -281,15 +357,26 @@ async function relevantQuestions(
+@@ -281,15 +331,26 @@ async function relevantQuestions(
        question: item.question,
        answer: item.answer.slice(0, RELEVANCE_ANSWER_CHARS),
      })),
@@ -512,7 +521,7 @@ index 4145df80..62bba696 100644
  
    const result = await generateText({
      model: buildChatAgentModel(
-@@ -297,11 +384,13 @@ async function relevantQuestions(
+@@ -297,11 +358,13 @@ async function relevantQuestions(
        await getOptionalEnvValue("OPENROUTER_MODEL"),
        "low",
      ),
@@ -530,7 +539,7 @@ index 4145df80..62bba696 100644
      prompt,
      // Admitted above, so settle the actual cost even if credits ran out since.
      onStepFinish: async (step) => {
-@@ -316,15 +405,19 @@ async function relevantQuestions(
+@@ -316,15 +379,19 @@ async function relevantQuestions(
        ]);
      },
    });
@@ -554,6 +563,77 @@ index 4145df80..62bba696 100644
  }
  
  // "…most accurate?" and "…the most accurate?", or the same question with
+diff --git a/src/server/features/ai-visibility/services/aiPromptResearchSource.ts b/src/server/features/ai-visibility/services/aiPromptResearchSource.ts
+new file mode 100644
+index 00000000..c48c2ad6
+--- /dev/null
++++ b/src/server/features/ai-visibility/services/aiPromptResearchSource.ts
+@@ -0,0 +1,65 @@
++import { waitUntil } from "cloudflare:workers";
++import {
++  CHATGPT_LANGUAGE_CODE,
++  CHATGPT_LOCATION_CODE,
++} from "@/server/lib/dataforseo";
++import { invalidFieldName } from "@/server/lib/dataforseo/envelope";
++import { buildCacheKey, getCached, setCached } from "@/server/lib/r2-cache";
++import type { AiPromptResearchSource } from "@/shared/ai-visibility";
++
++// A rejected market stays rejected for at least as long as research is cached.
++const REJECTED_TTL_SECONDS = 24 * 60 * 60;
++
++/**
++ * DataForSEO has ChatGPT prompt data only in US English. Elsewhere it has the
++ * market's Google AI Overview queries, which are local where ChatGPT's are not.
++ */
++export function researchSource(
++  market: { locationCode: number; languageCode: string } | null | undefined,
++): AiPromptResearchSource {
++  if (
++    !market ||
++    (market.locationCode === CHATGPT_LOCATION_CODE &&
++      market.languageCode === CHATGPT_LANGUAGE_CODE)
++  )
++    return {
++      platform: "chat_gpt",
++      locationCode: CHATGPT_LOCATION_CODE,
++      languageCode: CHATGPT_LANGUAGE_CODE,
++    };
++  return {
++    platform: "google",
++    locationCode: market.locationCode,
++    languageCode: market.languageCode,
++  };
++}
++
++/** LLM Mentions covers Google only in some markets and rejects the rest. */
++export function isRejectedMarketError(error: unknown) {
++  const field = error instanceof Error ? invalidFieldName(error.message) : null;
++  return field === "location_code" || field === "language_code";
++}
++
++// Shared across organizations: the market, not the customer, is rejected.
++const rejectedKey = (source: AiPromptResearchSource) =>
++  buildCacheKey("ai-visibility:prompt-research-unsupported", { ...source });
++
++/**
++ * Remembers a rejected market, so research skips the failed search, which
++ * DataForSEO may bill, instead of repeating it before every fallback.
++ */
++export async function wasMarketRejected(source: AiPromptResearchSource) {
++  return !!(await getCached(await rejectedKey(source)));
++}
++
++export async function rememberRejectedMarket(source: AiPromptResearchSource) {
++  const key = await rejectedKey(source);
++  waitUntil(
++    setCached(key, true, REJECTED_TTL_SECONDS).catch((error) => {
++      console.error(
++        "ai-visibility.prompt-research.unsupported-cache-write-failed",
++        error,
++      );
++    }),
++  );
++}
 diff --git a/src/server/mcp/tools/ai-visibility-output-schemas.ts b/src/server/mcp/tools/ai-visibility-output-schemas.ts
 index de09246f..473177f4 100644
 --- a/src/server/mcp/tools/ai-visibility-output-schemas.ts
