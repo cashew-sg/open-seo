@@ -23,7 +23,7 @@ OpenSEO MCP exposes tools for SEO research workflows:
 - Find keywords a domain already ranks for.
 - Check backlink and referring-domain overview data.
 - Explore a prompt in ChatGPT or compare answers and available citations across selected AI models. ChatGPT is the default; uncached answers use credits.
-- Research questions about a keyword with ChatGPT's answers and cited sources (uses credits).
+- Research questions about a keyword in the tracker's market, with AI answers and cited sources: ChatGPT in US English, Google AI Overviews elsewhere (uses credits).
 - Add and remove the keywords listed on Prompt Research (free, no credits).
 - Configure AI prompt tracking, preview cost, and start or pause scheduled checks.
 - Read and export saved AI answers, trends, citations, and competitor appearances without using credits.

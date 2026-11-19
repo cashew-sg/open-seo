@@ -25,7 +25,7 @@ The project-context tools are free and shared with the app and other agents.
 
 - `get_ai_visibility_results`, `get_ai_visibility_sources`, `get_ai_visibility_answer`: the evidence. Read one run-wide results call, one run-wide sources call with the same `runId`, then answers you need to verify.
 - `get_ai_visibility_trend`: whether visibility is moving, when the tracker has comparable history. Never compute a trend yourself from separate result calls.
-- `research_ai_visibility_prompts`: the questions around a prompt group and the sources ChatGPT cites for them (US English only).
+- `research_ai_visibility_prompts`: the questions around a prompt group and the sources AI answers cite for them in the tracker's market: ChatGPT in US English, Google AI Overviews elsewhere (`source` says which).
 - `explore_prompt`: asks ChatGPT one prompt through its API and returns the answer, citations and `fanOutQueries`, the web searches the model ran before answering. Charged at actual usage per uncached answer; cached answers are free for seven days. Requires a paid plan in hosted mode.
 - `estimate_ai_visibility_cost`, `save_ai_visibility_tracker`, `set_ai_visibility_schedule`, `run_ai_visibility_check`, `get_ai_visibility_run`: only for the first-run path below.
 - `get_ranked_keywords`, `get_serp_results`, `get_backlinks_overview`: optional context when an owned page's search performance or authority could change a recommendation.

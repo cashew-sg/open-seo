@@ -14,10 +14,17 @@ const {
   getTracker,
   listResearchKeywords,
   replaceResearchKeywords,
+  buildCacheKey,
 } = vi.hoisted(() => ({
   assertPaidPlan: vi.fn(),
   mentionsSearch: vi.fn(),
-  generateText: vi.fn(),
+  generateText:
+    vi.fn<
+      (options: {
+        prompt: string;
+        onStepFinish: (step: object) => unknown;
+      }) => Promise<unknown>
+    >(),
   billResearchSpend: vi.fn(),
   isHosted: vi.fn(),
   creditsDepleted: vi.fn(),
@@ -25,6 +32,7 @@ const {
   getTracker: vi.fn(),
   listResearchKeywords: vi.fn(),
   replaceResearchKeywords: vi.fn(),
+  buildCacheKey: vi.fn(async (prefix: string) => prefix),
 }));
 
 vi.mock("ai", () => ({
@@ -58,7 +66,7 @@ vi.mock("@/server/lib/dataforseo", () => ({
   createDataforseoClient: () => ({ aiSearch: { mentionsSearch } }),
 }));
 vi.mock("@/server/lib/r2-cache", () => ({
-  buildCacheKey: async (prefix: string) => prefix,
+  buildCacheKey,
   getCached,
   setCached: async () => undefined,
 }));
@@ -163,7 +171,6 @@ describe("researchAiPrompts", () => {
     });
     mentionsSearch.mockResolvedValue([
       { question: "sg mortgage rates", ai_search_volume: 2900 },
-      { question: "dbs", ai_search_volume: 165000 },
     ]);
     generateText.mockImplementation(
       async ({ onStepFinish }: { onStepFinish: (step: object) => unknown }) => {
@@ -239,6 +246,39 @@ describe("researchAiPrompts", () => {
     ]);
   });
 
+  it("shows the model tracked Google prompts so a later rewrite keeps their wording, without paying again when tracking changes", async () => {
+    const trackedText = "What are mortgage rates in Singapore?";
+    getTracker.mockResolvedValue({
+      tracker: { locationCode: 2702, languageCode: "en" },
+      brands: [],
+      prompts: [{ text: trackedText, archived: false }],
+    });
+    mentionsSearch.mockResolvedValue([
+      { question: "current sg mortgage rates", ai_search_volume: 2900 },
+    ]);
+    generateText.mockImplementation(
+      async ({ onStepFinish }: { onStepFinish: (step: object) => unknown }) => {
+        await onStepFinish({});
+        return { output: { relevant: [{ id: 0, question: trackedText }] } };
+      },
+    );
+
+    const result = await researchAiPrompts(input, customer);
+
+    expect(generateText.mock.lastCall?.[0].prompt).toContain(
+      JSON.stringify({ trackedPrompts: [trackedText] }).slice(1, -1),
+    );
+    // The relevance cache key leaves tracked prompts out, so a tracker edit
+    // reuses the cached rewrite instead of buying a new one.
+    const relevanceKey = buildCacheKey.mock.calls.find(
+      ([prefix]) => prefix === "ai-visibility:prompt-relevance",
+    );
+    expect(JSON.stringify(relevanceKey)).not.toContain(trackedText);
+    expect(result.prompts).toMatchObject([
+      { text: trackedText, tracked: true },
+    ]);
+  });
+
   it("falls back to US English ChatGPT data when the provider rejects the market for Google", async () => {
     getTracker.mockResolvedValue({
       tracker: { locationCode: 2704, languageCode: "vi" },
@@ -258,6 +298,25 @@ describe("researchAiPrompts", () => {
     });
     expect(result.source.platform).toBe("chat_gpt");
     expect(result.prompts.length).toBeGreaterThan(0);
+  });
+
+  it("skips the Google search in a market the provider already rejected", async () => {
+    getTracker.mockResolvedValue({
+      tracker: { locationCode: 2704, languageCode: "vi" },
+      brands: [],
+      prompts: [],
+    });
+    getCached.mockImplementation(async (key: string) =>
+      key === "ai-visibility:prompt-research-unsupported" ? true : null,
+    );
+
+    const result = await researchAiPrompts(input, customer);
+
+    expect(mentionsSearch).toHaveBeenCalledOnce();
+    expect(mentionsSearch.mock.lastCall?.[0]).toMatchObject({
+      platform: "chat_gpt",
+    });
+    expect(result.source.platform).toBe("chat_gpt");
   });
 
   it("refuses research when hosted credits are used up before buying any data", async () => {

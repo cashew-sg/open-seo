@@ -23,11 +23,11 @@ The project-context tools are free and shared with the app and other agents.
 
 ## OpenSEO MCP tools
 
-- `research_ai_visibility_prompts`: questions about one keyword, matched in questions and answers and kept only when a model judges they use the keyword in the business's sense (from the project's business overview), with near-duplicates merged and the most common first. Niche keywords may return few prompts. Each prompt has cited `sources` (with `own` marked), `ownDomainCited`, `brandMentioned` and `tracked`. One prompt search and one relevance check per keyword, cached for 24 hours. US English only. Requires a paid plan in hosted mode.
+- `research_ai_visibility_prompts`: questions about one keyword, matched in questions and answers (in the search itself for Google data) and kept only when a model judges they use the keyword in the business's sense (from the project's business overview), with near-duplicates merged and the most common first. Niche keywords may return few prompts. Each prompt has cited `sources` (with `own` marked), `ownDomainCited`, `brandMentioned` and `tracked`. `source` names the data used: ChatGPT answers in US English, and in every other market that market's Google searches that showed an AI Overview, rewritten as questions, with the overview's cited sources. Research uses the tracker's market, or the project's when there is no tracker. One prompt search and one relevance check per keyword, cached for 24 hours. Requires a paid plan in hosted mode.
 - `explore_prompt`: optional. Asks ChatGPT one prompt through its API and returns today's answer, citations, a `brandMentioned` flag for `highlightBrand`, and `fanOutQueries`, the web searches the model ran before answering. Charged at actual usage per uncached answer; cached answers are free for seven days. Requires a paid plan in hosted mode.
 - `list_saved_keywords` and, when connected, a bounded `get_search_console_performance` read: free sources of head terms the business already cares about.
 
-Research uses usage credits. The questions come mostly from Google "People also ask" data, not logged ChatGPT prompts, and nobody can see how often a question is asked in ChatGPT. Never present a question as a real user prompt or attach a demand number to it.
+Research uses usage credits. In US English the questions come mostly from Google "People also ask" data; elsewhere they are Google searches rewritten as questions. Neither is logged ChatGPT prompts, and nobody can see how often a question is asked in an AI assistant. Never present a question as a real user prompt or attach a demand number to it.
 
 ## Workflow
 
@@ -41,7 +41,7 @@ Pick the two to four terms that fit the business best. Name the ones you dropped
 
 Call `research_ai_visibility_prompts` once per chosen term. Each call returns up to about 100 prompts with their sources, so keep to two or three terms unless the user asks for more, and summarize each result before the next call. Prompts about other meanings of the same words are filtered out, so an ambiguous or niche term can return only a few. If a term returns nothing, retry once with a shorter or broader form before dropping it.
 
-If the market is not US English, say so before spending: research results cover US English questions and ChatGPT answers only. They can still suggest themes, but do not present them as the user's market.
+Read `source` on the first result and describe the data accordingly: ChatGPT answers for US English, Google AI Overviews for any other market. If `source` is US English ChatGPT although the tracker's market is not, the provider has no Google data for that market; say so, and do not present the results as the user's market.
 
 ### 3. Group by what the person wants
 
@@ -82,13 +82,13 @@ Deliver through the `seo-report` skill, saving with `skill: "ai-prompt-research"
 2. **Openings**: one `h3` per leading opening with representative prompts, the brand's presence, and the cited domains with their source type.
 3. **All prompt groups**: one table. Group | Example prompt | Prompts | Your site cited | Brand mentioned | Most-cited domains.
 4. **Prompts worth tracking**: the 10–20 exact prompts, grouped, ready to add with **Track selected** in the app.
-5. **How this report was made**: the fixed skill link line from `seo-report` (URL `https://openseo.so/docs/skills/ai-prompt-research`, text "OpenSEO AI Prompt Research skill"), the keywords researched, the market (US English), the research date, any prompt checked with `explore_prompt`, and a note that the questions and answers come from DataForSEO's dataset, built mostly from Google "People also ask" questions, not logged ChatGPT prompts or OpenSEO's own collected answers.
+5. **How this report was made**: the fixed skill link line from `seo-report` (URL `https://openseo.so/docs/skills/ai-prompt-research`, text "OpenSEO AI Prompt Research skill"), the keywords researched, the market and answer source from `source` (ChatGPT or Google AI Overviews), the research date, any prompt checked with `explore_prompt`, and a note that the questions and answers come from DataForSEO's dataset (Google "People also ask" questions with ChatGPT's answers in US English, Google searches rewritten as questions with their AI Overviews elsewhere), not logged ChatGPT prompts or OpenSEO's own collected answers.
 
 In chat, lead with one shareable line built from the evidence, for example: "ChatGPT's answers about AI meeting notes cite G2 and two Reddit threads, not your site." Then the report link.
 
 ## Guardrails
 
-- These are prompts from DataForSEO's dataset with the citations it recorded. They are not answers OpenSEO collected, and they can differ from what ChatGPT says today. Prompt Tracking collects observed, dated answers, and `ai-visibility-audit` reads them. An `explore_prompt` spot check is one API answer, not a tracked observation.
+- These are prompts from DataForSEO's dataset with the citations it recorded. They are not answers OpenSEO collected, and they can differ from what ChatGPT or Google says today. Prompt Tracking collects observed, dated answers, and `ai-visibility-audit` reads them. An `explore_prompt` spot check is one API answer, not a tracked observation.
 - Never estimate how often a question is asked in AI assistants, or turn prompt counts into users, traffic or revenue.
 - A prompt without a brand mention is an observation about that recorded answer, not proof the brand is never recommended.
 - Keep observations and proposals apart: "answers cite these three domains" is an observation; "get listed on them" is a proposal.
